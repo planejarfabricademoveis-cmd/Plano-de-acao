@@ -1,0 +1,640 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sistema Plano de Ação - v3.0 Firebase</title>
+    
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.28/jspdf.plugin.autotable.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js"></script>
+    
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
+        import { getFirestore, collection, addDoc, getDocs, updateDoc, deleteDoc, doc, onSnapshot, query, where } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+
+        const firebaseConfig = {
+            apiKey: "AIzaSyDF7_A4KG93Qg6hvYHRdyq5WtLqi0nSIXQ",
+            authDomain: "plano-de-acao-ccdbc.firebaseapp.com",
+            projectId: "plano-de-acao-ccdbc",
+            storageBucket: "plano-de-acao-ccdbc.firebasestorage.app",
+            messagingSenderId: "899519192932",
+            appId: "1:899519192932:web:4cea32c7a920fd23256471"
+        };
+
+        const app = initializeApp(firebaseConfig);
+        const dbFirestore = getFirestore(app);
+
+        window.dbFirestore = dbFirestore;
+        window.fsMethods = { collection, addDoc, getDocs, updateDoc, deleteDoc, doc, onSnapshot, query, where };
+    </script>
+
+    <style>
+        :root {
+            --azul-claro: #add8e6;
+            --vermelho-claro: #ffcccb;
+            --verde: #90ee90;
+            --laranja: #ffcc99;
+            --primary: #2c3e50;
+            --rma-color: #8e44ad;
+        }
+
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: #f4f7f6; margin: 0; padding: 20px; }
+        .container { max-width: 1200px; margin: 0 auto; text-align: center; } 
+        
+        #login-screen { text-align: center; margin-top: 100px; }
+        .card { background: white; padding: 30px; border-radius: 10px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); display: inline-block; min-width: 300px; }
+        
+        input, select, textarea { 
+            width: 100%; padding: 10px; margin: 10px 0; border: 1px solid #ddd; border-radius: 5px; box-sizing: border-box;
+        }
+
+        button { background: var(--primary); color: white; border: none; padding: 10px 15px; border-radius: 5px; cursor: pointer; transition: 0.3s; font-weight: bold; margin: 2px; }
+        button:hover { opacity: 0.8; }
+
+        #main-content { display: none; }
+        
+        .dept-grid { 
+            display: grid; 
+            grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); 
+            gap: 20px; 
+            margin-top: 30px; 
+            justify-content: center; 
+        }
+        
+        .dept-block { 
+            height: 120px; display: flex; align-items: center; justify-content: center; 
+            color: white; font-weight: bold; font-size: 1.1rem; border-radius: 10px; 
+            cursor: pointer; transition: transform 0.2s; text-align: center; padding: 10px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+        .dept-block:hover { transform: scale(1.05); }
+
+        #dept-detail { display: none; text-align: left; } 
+        
+        .filter-bar {
+            background: #fff; padding: 15px; border-radius: 8px; margin-bottom: 20px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.05); display: flex; flex-wrap: wrap;
+            gap: 10px; justify-content: center; border: 1px solid #eee;
+        }
+        .filter-btn { background: #f8f9fa; color: #555; border: 1px solid #ddd; padding: 8px 15px; font-size: 0.85rem; }
+        .filter-btn.active { background: var(--primary); color: white; border-color: var(--primary); }
+        .filter-btn span { background: rgba(0,0,0,0.1); padding: 2px 6px; border-radius: 10px; margin-left: 5px; font-size: 0.75rem; }
+
+        .task-card { background: white; padding: 20px; border-radius: 8px; margin-bottom: 20px; border-left: 10px solid #ccc; position: relative; box-shadow: 0 2px 5px rgba(0,0,0,0.05); transition: 0.3s; }
+        
+        .status-andamento { border-left-color: var(--azul-claro); background-color: #f0f8ff; }
+        .status-cancelado { border-left-color: var(--vermelho-claro); background-color: #fffafa; }
+        .status-concluido { border-left-color: var(--verde); background-color: #f5fff5; }
+        .status-atraso { border-left-color: var(--laranja); background-color: #fffdf5; }
+        
+        .status-badge { padding: 4px 8px; border-radius: 4px; font-weight: bold; font-size: 0.85rem; text-transform: uppercase; display: inline-block; }
+        .badge-andamento { background: var(--azul-claro); }
+        .badge-concluido { background: var(--verde); }
+        .badge-cancelado { background: var(--vermelho-claro); }
+        .badge-atraso { background: var(--laranja); }
+
+        .days-counter { font-weight: bold; color: #2c3e50; font-size: 0.9rem; margin-top: 5px; display: block; }
+        .instr-box { background: #f9f9f9; border: 1px dashed #ccc; padding: 10px; margin: 10px 0; border-radius: 5px; font-size: 0.9rem; color: #444; }
+
+        .btn-group { margin: 15px 0; display: flex; gap: 5px; flex-wrap: wrap; justify-content: center; } 
+        .btn-rma { background: var(--rma-color) !important; }
+        .btn-edit { background: #f39c12; }
+        .btn-delete { background: #e74c3c; }
+        .btn-export { background: #27ae60; }
+        
+        .header-actions { border-bottom: 2px solid #ddd; padding-bottom: 15px; margin-bottom: 20px; text-align: center; }
+        
+        .export-section { background: #eee; padding: 15px; border-radius: 8px; margin-top: 10px; text-align: center; }
+
+        .modal { display: none; position: fixed; z-index: 100; left: 0; top: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); text-align: left; }
+        .modal-content { background: white; margin: 2% auto; padding: 20px; width: 80%; max-width: 650px; border-radius: 10px; max-height: 90vh; overflow-y: auto; }
+
+        .tag-rma { background: var(--rma-color); color: white; padding: 2px 8px; border-radius: 10px; font-size: 0.8rem; margin-left: 10px; }
+        .current-time { font-size: 0.9rem; color: #666; margin-bottom: 10px; text-align: center; }
+
+        .dept-mgmt-item {
+            display: flex; justify-content: space-between; align-items: center; 
+            padding: 10px; border-bottom: 1px solid #eee;
+        }
+
+        @media print {
+            body { background: white; padding: 0; }
+            .btn-group, .header-actions, .export-section, .filter-bar, button, .modal, .tag-rma, input[type="checkbox"] { display: none !important; }
+            .container { max-width: 100%; }
+            .task-card { break-inside: avoid; border: 1px solid #eee; border-left: 10px solid #ccc !important; margin-bottom: 15px; box-shadow: none; print-color-adjust: exact; }
+        }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <div id="login-screen">
+        <div class="card">
+            <h1>Plano de Ação Cloud</h1>
+            <p style="font-size: 0.8rem; color: #888;">Sincronizado com Firebase</p>
+            <input type="password" id="main-pass" placeholder="Digite a senha mestra">
+            <button onclick="checkMainLogin()">Entrar no Sistema</button>
+        </div>
+    </div>
+
+    <div id="main-content">
+        <div class="header-actions">
+            <h2>Gestão Centralizada</h2>
+            <div id="clock-display" class="current-time"></div>
+            <button onclick="openConfigDepts()">Gerenciar Departamentos</button>
+            <button onclick="logout()" style="background:#666">Sair</button>
+        </div>
+
+        <div class="export-section">
+            <strong>Relatórios e Extratos Globais:</strong><br>
+            <div class="btn-group">
+                <button class="btn-export" onclick="preExport('filtered', 'Sim', 'excel')">Excel: Simples Gestão</button>
+                <button class="btn-export" onclick="preExport('filtered', 'Não', 'excel')">Excel: Não Simples</button>
+                <button class="btn-export" onclick="preExport('filtered', 'Sim', 'pdf')">PDF: Simples Gestão</button>
+                <button class="btn-export" onclick="preExport('filtered', 'Não', 'pdf')">PDF: Não Simples</button>
+                <button class="btn-rma" onclick="preExport('rma', null, 'pdf')">PDF Extrato RMA</button>
+                <button class="btn-rma" onclick="preExport('rma', null, 'excel')">Excel RMA</button>
+                <button class="btn-export" onclick="preExport('full', null, 'excel')">Relatório Geral (Todos)</button>
+            </div>
+        </div>
+
+        <div id="dept-list" class="dept-grid"></div>
+    </div>
+
+    <div id="dept-detail">
+        <div class="header-actions">
+            <h2 id="current-dept-title">Departamento</h2>
+            <button onclick="backToMain()">Voltar ao Início</button>
+        </div>
+        
+        <div class="btn-group">
+            <button onclick="openTaskModal()">+ Nova Tarefa</button>
+            <button class="btn-export" onclick="preExport('dept', null, 'excel')">Exportar Excel</button>
+            <button class="btn-export" onclick="preExport('dept', null, 'pdf')">Exportar PDF</button>
+            <button class="btn-export" onclick="preExport('dept', null, 'print')">Imprimir Setor</button>
+        </div>
+
+        <div class="filter-bar">
+            <button class="filter-btn active" id="f-tudo" onclick="setFilter('Tudo')">Visualizar Geral <span id="c-tudo">0</span></button>
+            <button class="filter-btn" id="f-andamento" onclick="setFilter('Andamento')">Em Andamento <span id="c-andamento">0</span></button>
+            <button class="filter-btn" id="f-atrasado" onclick="setFilter('Atrasado')">Atrasadas <span id="c-atrasado">0</span></button>
+            <button class="filter-btn" id="f-concluido" onclick="setFilter('Concluido')">Concluídas <span id="c-concluido">0</span></button>
+            <button class="filter-btn" id="f-cancelado" onclick="setFilter('Cancelado')">Canceladas <span id="c-cancelado">0</span></button>
+        </div>
+
+        <div id="task-list"></div>
+    </div>
+</div>
+
+<div id="exportFilterModal" class="modal">
+    <div class="modal-content" style="max-width: 400px; text-align: center;">
+        <h3>Configuração do Relatório</h3>
+        <p>Deseja incluir as tarefas <strong>Concluídas</strong> ou <strong>Canceladas</strong> no documento?</p>
+        <select id="export-include-closed">
+            <option value="Não">Não (Apenas Pendentes/Em Atraso)</option>
+            <option value="Sim">Sim (Relatório Completo)</option>
+        </select>
+        <div class="btn-group" style="justify-content: center; margin-top: 20px;">
+            <button id="btn-confirm-export" onclick="confirmExport()" style="background: #27ae60;">Gerar Arquivo</button>
+            <button onclick="closeModal('exportFilterModal')" style="background: #999;">Cancelar</button>
+        </div>
+    </div>
+</div>
+
+<div id="taskModal" class="modal">
+    <div class="modal-content">
+        <h3 id="modalTaskTitle">Dados da Tarefa</h3>
+        <label>Quem?</label> <input type="text" id="t-quem">
+        <label>O que?</label> <textarea id="t-oque" rows="2"></textarea>
+        
+        <div style="display: flex; gap: 20px;">
+            <div style="flex: 1;">
+                <label>Simples gestão?</label>
+                <select id="t-gestao">
+                    <option value="Sim">Sim</option>
+                    <option value="Não">Não</option>
+                </select>
+            </div>
+            <div style="flex: 1;">
+                <label style="color: var(--rma-color); font-weight: bold;">Apresentar na RMA?</label>
+                <select id="t-rma">
+                    <option value="Não">Não</option>
+                    <option value="Sim">Sim</option>
+                </select>
+            </div>
+        </div>
+
+        <label>Para onde?</label> <input type="text" id="t-onde" placeholder="Local ou destino">
+        <label>Instruções:</label>
+        <textarea id="t-instrucoes" rows="3"></textarea>
+        
+        <div style="display: flex; gap: 10px;">
+            <div style="flex: 1;"><label>Data Inicial</label> <input type="date" id="t-quando"></div>
+            <div style="flex: 1;"><label>Prazo Final</label> <input type="date" id="t-prazo" onchange="calculateModalDays()"></div>
+        </div>
+        <span id="modal-days-count" class="days-counter"></span>
+
+        <label>Situação:</label>
+        <select id="t-situacao" onchange="toggleCancelReason()">
+            <option value="Andamento">Andamento</option>
+            <option value="Concluido">Concluido</option>
+            <option value="Cancelado">Cancelado</option>
+            <option value="Em atraso">Em atraso</option>
+        </select>
+
+        <div id="div-cancelado" style="display:none">
+            <label>Motivo do Cancelamento:</label> <input type="text" id="t-cancel-motivo">
+        </div>
+
+        <label>Ressalvas:</label>
+        <select id="t-ressalva-tipo">
+            <option value="Sem ressalvas">Sem ressalvas</option>
+            <option value="Com ressalvas">Com ressalvas</option>
+        </select>
+        <input type="text" id="t-ressalva-quais" placeholder="Quais ressalvas?">
+
+        <input type="hidden" id="edit-id">
+        <div class="btn-group">
+            <button onclick="saveTask()" style="background: #27ae60; padding: 15px 30px;">SALVAR NO CLOUD</button>
+            <button onclick="closeModal('taskModal')" style="background:#999">Cancelar</button>
+        </div>
+    </div>
+</div>
+
+<div id="deptModal" class="modal">
+    <div class="modal-content">
+        <h3>Gerenciar Departamentos</h3>
+        <div id="manage-depts-list" style="margin-bottom: 20px; border: 1px solid #eee; border-radius: 5px; max-height: 300px; overflow-y: auto;"></div>
+        <hr>
+        <h4>Adicionar Novo Departamento</h4>
+        <input type="text" id="new-dept-name" placeholder="Nome do Departamento">
+        <button onclick="addDept()" style="background: #27ae60;">Salvar Novo</button>
+        <button onclick="closeModal('deptModal')" style="background:#999">Fechar</button>
+    </div>
+</div>
+
+<script>
+    const SENHA_MESTRA = "DEUSBOM";
+    let db = { depts: [], tasks: [] };
+    let currentDept = "";
+    let exportPending = null;
+    let currentFilter = "Tudo";
+
+    async function syncFromFirebase() {
+        if (!window.dbFirestore) return;
+        const { getDocs, collection } = window.fsMethods;
+        const deptSnap = await getDocs(collection(window.dbFirestore, "departamentos"));
+        db.depts = deptSnap.docs.map(doc => ({ id: doc.id, nome: doc.data().nome }));
+        const taskSnap = await getDocs(collection(window.dbFirestore, "tarefas"));
+        db.tasks = taskSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        renderDepts();
+        if(currentDept) renderTasks();
+    }
+
+    function updateClock() {
+        const now = new Date();
+        const display = document.getElementById('clock-display');
+        if(display) display.innerText = "Data/Hora Atual: " + now.toLocaleString('pt-BR');
+    }
+    setInterval(updateClock, 1000);
+
+    function formatarDataBR(dataStr) {
+        if(!dataStr) return "---";
+        const [ano, mes, dia] = dataStr.split("-");
+        return `${dia}/${mes}/${ano}`;
+    }
+
+    function calculateDaysDiff(prazoStr) {
+        if(!prazoStr) return null;
+        const hoje = new Date(); hoje.setHours(0,0,0,0);
+        const prazo = new Date(prazoStr + "T12:00:00"); 
+        const diffDays = Math.ceil((prazo - hoje) / (1000 * 60 * 60 * 24));
+        return diffDays;
+    }
+
+    function calculateModalDays() {
+        const prazo = document.getElementById('t-prazo').value;
+        const display = document.getElementById('modal-days-count');
+        const diff = calculateDaysDiff(prazo);
+        display.innerText = diff !== null ? (diff >= 0 ? `Faltam ${diff} dias` : `Atrasado ${Math.abs(diff)} dias`) : "";
+    }
+
+    function checkMainLogin() {
+        if(document.getElementById('main-pass').value === SENHA_MESTRA) {
+            document.getElementById('login-screen').style.display = 'none';
+            document.getElementById('main-content').style.display = 'block';
+            syncFromFirebase();
+            updateClock();
+        } else { alert("Senha incorreta!"); }
+    }
+
+    function authAction(callback, failCallback = null) {
+        const p = prompt("Confirme a senha mestra:");
+        if(p === SENHA_MESTRA) callback(); 
+        else {
+            if (p !== null) alert("Senha incorreta!");
+            if (failCallback) failCallback();
+        }
+    }
+
+    function logout() { location.reload(); }
+
+    function renderDepts() {
+        const list = document.getElementById('dept-list');
+        list.innerHTML = "";
+        const cores = ['#3498db', '#e67e22', '#9b59b6', '#34495e', '#16a085', '#27ae60', '#d35400', '#2980b9'];
+        if(db.depts.length === 0) {
+            list.innerHTML = `<p style="grid-column: 1/-1; color: #888;">Nenhum departamento criado.</p>`;
+            return;
+        }
+        db.depts.forEach((d, i) => {
+            const color = cores[i % cores.length];
+            list.innerHTML += `<div class="dept-block" style="background:${color}" onclick="enterDept('${d.nome}')">${d.nome}</div>`;
+        });
+    }
+
+    function enterDept(name) {
+        authAction(() => {
+            currentDept = name;
+            currentFilter = "Tudo";
+            document.getElementById('main-content').style.display = 'none';
+            document.getElementById('dept-detail').style.display = 'block';
+            document.getElementById('current-dept-title').innerText = name;
+            renderTasks();
+        });
+    }
+
+    function backToMain() {
+        document.getElementById('dept-detail').style.display = 'none';
+        document.getElementById('main-content').style.display = 'block';
+        syncFromFirebase();
+    }
+
+    function setFilter(filter) {
+        currentFilter = filter;
+        document.querySelectorAll('.filter-btn').forEach(btn => btn.classList.remove('active'));
+        const btnId = 'f-' + filter.toLowerCase().replace(" ", "-");
+        if(document.getElementById(btnId)) document.getElementById(btnId).classList.add('active');
+        renderTasks();
+    }
+
+    function renderTasks() {
+        const list = document.getElementById('task-list');
+        list.innerHTML = "";
+        const deptTasks = db.tasks.filter(t => t.dept === currentDept);
+        document.getElementById('c-tudo').innerText = deptTasks.length;
+        document.getElementById('c-andamento').innerText = deptTasks.filter(t => t.situacao === 'Andamento').length;
+        document.getElementById('c-concluido').innerText = deptTasks.filter(t => t.situacao === 'Concluido').length;
+        document.getElementById('c-cancelado').innerText = deptTasks.filter(t => t.situacao === 'Cancelado').length;
+        document.getElementById('c-atrasado').innerText = deptTasks.filter(t => {
+            const diff = calculateDaysDiff(t.prazo);
+            return t.situacao !== 'Concluido' && t.situacao !== 'Cancelado' && diff !== null && diff < 0;
+        }).length;
+        let filtered = deptTasks;
+        if (currentFilter === 'Andamento') filtered = deptTasks.filter(t => t.situacao === 'Andamento');
+        else if (currentFilter === 'Concluido') filtered = deptTasks.filter(t => t.situacao === 'Concluido');
+        else if (currentFilter === 'Cancelado') filtered = deptTasks.filter(t => t.situacao === 'Cancelado');
+        else if (currentFilter === 'Atrasado') filtered = deptTasks.filter(t => {
+            const diff = calculateDaysDiff(t.prazo);
+            return t.situacao !== 'Concluido' && t.situacao !== 'Cancelado' && diff !== null && diff < 0;
+        });
+        filtered.forEach(t => list.innerHTML += generateTaskHTML(t, t.id, false));
+    }
+
+    function generateTaskHTML(t, id, isPrint = false) {
+        let situacaoExibida = t.situacao;
+        const diff = calculateDaysDiff(t.prazo);
+        const estaAtrasado = (t.situacao !== 'Concluido' && t.situacao !== 'Cancelado' && diff !== null && diff < 0);
+        if(estaAtrasado) situacaoExibida = "Em atraso";
+        let statusClass = "status-" + (estaAtrasado ? "atraso" : situacaoExibida.toLowerCase().replace(" ", "-"));
+        let badgeClass = "badge-" + (estaAtrasado ? "atraso" : situacaoExibida.toLowerCase().replace(" ", "-"));
+        let instrHtml = t.instrucoes ? `<div class="instr-box"><strong>Instruções:</strong> ${t.instrucoes}</div>` : "";
+        let counterHtml = (t.situacao !== 'Concluido' && t.situacao !== 'Cancelado' && diff !== null) ? 
+            `<span class="days-counter">${diff >= 0 ? 'Faltam '+diff+' dias' : 'Atrasado '+Math.abs(diff)+' dias'}</span>` : "";
+        const actions = isPrint ? '' : `
+            <div class="btn-group" style="justify-content: flex-start;">
+                <button class="btn-edit" onclick="editTask('${id}')">Editar</button>
+                <button class="btn-delete" onclick="deleteTask('${id}')">Excluir</button>
+            </div>`;
+        const checkbox = isPrint ? '' : `
+            <div style="float:right">
+                ${t.rma === 'Sim' ? '<span class="tag-rma">RMA</span>' : ''}
+                <input type="checkbox" ${t.situacao === 'Concluido' ? 'checked' : ''} onclick="toggleConcluir('${id}', this)"> Concluído
+            </div>`;
+        return `<div class="task-card ${statusClass}">
+                    ${checkbox}
+                    <strong>Resp:</strong> ${t.quem} | <strong>SG:</strong> ${t.gestao}<br>
+                    <strong>Tarefa:</strong> ${t.oque}<br>
+                    <strong>Local:</strong> ${t.onde || '---'}
+                    ${instrHtml}
+                    <strong>Início:</strong> ${formatarDataBR(t.quando)} | <strong>Prazo:</strong> ${formatarDataBR(t.prazo)}<br>
+                    ${counterHtml}
+                    <strong>Status:</strong> <span class="status-badge ${badgeClass}">${situacaoExibida}</span> ${t.motivo ? ' - Motivo: '+t.motivo : ''}<br>
+                    ${actions}
+                </div>`;
+    }
+
+    async function toggleConcluir(id, checkbox) {
+        const prev = !checkbox.checked;
+        authAction(async () => {
+            const { updateDoc, doc } = window.fsMethods;
+            await updateDoc(doc(window.dbFirestore, "tarefas", id), { situacao: checkbox.checked ? 'Concluido' : 'Andamento' });
+            syncFromFirebase();
+        }, () => checkbox.checked = prev);
+    }
+
+    async function deleteTask(id) {
+        authAction(async () => {
+            if(confirm("Excluir permanentemente?")){
+                const { deleteDoc, doc } = window.fsMethods;
+                await deleteDoc(doc(window.dbFirestore, "tarefas", id));
+                syncFromFirebase();
+            }
+        });
+    }
+
+    function editTask(id) {
+        authAction(() => {
+            const t = db.tasks.find(x => x.id === id);
+            document.getElementById('edit-id').value = id;
+            document.getElementById('t-quem').value = t.quem;
+            document.getElementById('t-oque').value = t.oque;
+            document.getElementById('t-gestao').value = t.gestao;
+            document.getElementById('t-rma').value = t.rma || "Não";
+            document.getElementById('t-onde').value = t.onde || "";
+            document.getElementById('t-instrucoes').value = t.instrucoes || "";
+            document.getElementById('t-quando').value = t.quando;
+            document.getElementById('t-prazo').value = t.prazo;
+            document.getElementById('t-situacao').value = t.situacao;
+            document.getElementById('t-cancel-motivo').value = t.motivo || "";
+            document.getElementById('t-ressalva-tipo').value = t.ressalva_tipo;
+            document.getElementById('t-ressalva-quais').value = t.ressalva_quais;
+            calculateModalDays();
+            toggleCancelReason();
+            openTaskModal(true);
+        });
+    }
+
+    async function saveTask() {
+        const id = document.getElementById('edit-id').value;
+        const taskObj = {
+            dept: currentDept,
+            quem: document.getElementById('t-quem').value,
+            oque: document.getElementById('t-oque').value,
+            gestao: document.getElementById('t-gestao').value,
+            rma: document.getElementById('t-rma').value,
+            onde: document.getElementById('t-onde').value,
+            instrucoes: document.getElementById('t-instrucoes').value,
+            quando: document.getElementById('t-quando').value,
+            prazo: document.getElementById('t-prazo').value,
+            situacao: document.getElementById('t-situacao').value,
+            motivo: document.getElementById('t-cancel-motivo').value,
+            ressalva_tipo: document.getElementById('t-ressalva-tipo').value,
+            ressalva_quais: document.getElementById('t-ressalva-quais').value
+        };
+        const { addDoc, updateDoc, doc, collection } = window.fsMethods;
+        if(id === "") await addDoc(collection(window.dbFirestore, "tarefas"), taskObj);
+        else await updateDoc(doc(window.dbFirestore, "tarefas", id), taskObj);
+        closeModal('taskModal');
+        syncFromFirebase();
+    }
+
+    async function addDept() {
+        const input = document.getElementById('new-dept-name');
+        const name = input.value.trim().toUpperCase();
+        if(name) {
+            const { addDoc, collection } = window.fsMethods;
+            await addDoc(collection(window.dbFirestore, "departamentos"), { nome: name });
+            input.value = "";
+            await syncFromFirebase();
+            refreshDeptMgmtList();
+        }
+    }
+
+    async function renameDept(id, antigoNome) {
+        const novoNome = prompt("Novo nome:", antigoNome);
+        if(novoNome && novoNome.trim() !== "") {
+            const { updateDoc, doc } = window.fsMethods;
+            await updateDoc(doc(window.dbFirestore, "departamentos", id), { nome: novoNome.toUpperCase() });
+            await syncFromFirebase();
+            refreshDeptMgmtList();
+        }
+    }
+
+    async function deleteDept(id) {
+        if(confirm("Excluir setor?")) {
+            const { deleteDoc, doc } = window.fsMethods;
+            await deleteDoc(doc(window.dbFirestore, "departamentos", id));
+            await syncFromFirebase();
+            refreshDeptMgmtList();
+        }
+    }
+
+    function refreshDeptMgmtList() {
+        const container = document.getElementById('manage-depts-list');
+        container.innerHTML = db.depts.map((d) => `
+            <div class="dept-mgmt-item">
+                <span>${d.nome}</span>
+                <div>
+                    <button onclick="renameDept('${d.id}', '${d.nome}')" style="background:#f39c12; font-size:0.7rem;">Renomear</button>
+                    <button onclick="deleteDept('${d.id}')" style="background:#e74c3c; font-size:0.7rem;">Excluir</button>
+                </div>
+            </div>
+        `).join("");
+    }
+
+    function openConfigDepts() {
+        authAction(() => {
+            refreshDeptMgmtList();
+            document.getElementById('deptModal').style.display = 'block';
+        });
+    }
+
+    function openTaskModal(isEdit = false) {
+        if(!isEdit) {
+            document.getElementById('edit-id').value = "";
+            document.querySelectorAll('#taskModal input, #taskModal textarea').forEach(i => i.value = "");
+            document.getElementById('t-gestao').value = "Sim";
+            document.getElementById('t-rma').value = "Não";
+            document.getElementById('t-situacao').value = "Andamento";
+            document.getElementById('t-ressalva-tipo').value = "Sem ressalvas";
+        }
+        document.getElementById('taskModal').style.display = 'block';
+    }
+
+    function closeModal(id) { document.getElementById(id).style.display = 'none'; }
+    function toggleCancelReason() { document.getElementById('div-cancelado').style.display = (document.getElementById('t-situacao').value === 'Cancelado') ? 'block' : 'none'; }
+
+    // --- EXPORTAÇÃO (ATUALIZADA COM TODOS OS CAMPOS) ---
+    function preExport(type, param, format) {
+        exportPending = { type, param, format };
+        document.getElementById('exportFilterModal').style.display = 'block';
+    }
+
+    function confirmExport() {
+        const includeClosed = document.getElementById('export-include-closed').value === 'Sim';
+        const { type, param, format } = exportPending;
+        closeModal('exportFilterModal');
+        let filteredTasks = (type === 'filtered') ? db.tasks.filter(t => t.gestao === param) :
+                            (type === 'rma') ? db.tasks.filter(t => t.rma === 'Sim') :
+                            (type === 'dept') ? db.tasks.filter(t => t.dept === currentDept) : [...db.tasks];
+        if (!includeClosed) filteredTasks = filteredTasks.filter(t => t.situacao !== 'Concluido' && t.situacao !== 'Cancelado');
+        if (format === 'print') {
+            const list = document.getElementById('task-list');
+            const originalContent = list.innerHTML;
+            list.innerHTML = `<h2 style="text-align:center">Relatório - ${currentDept || 'Geral'}</h2>`;
+            filteredTasks.forEach(t => list.innerHTML += generateTaskHTML(t, t.id, true));
+            window.print();
+            list.innerHTML = originalContent;
+            renderTasks(); 
+        } else {
+            executeExport(getFormatedData(filteredTasks), "Relatorio_Plano_de_Acao", format, "Relatório Completo Plano de Ação");
+        }
+    }
+
+    // Mapeamento de todos os campos para os documentos
+    function getFormatedData(taskList) {
+        return taskList.map(t => ({
+            'Setor': t.dept || '',
+            'Responsável': t.quem || '',
+            'Tarefa': t.oque || '',
+            'S. Gestão': t.gestao || 'Não',
+            'RMA': t.rma || 'Não',
+            'Local': t.onde || '',
+            'Instruções': t.instrucoes || '',
+            'Data Inicial': formatarDataBR(t.quando),
+            'Prazo Final': formatarDataBR(t.prazo),
+            'Situação': t.situacao || '',
+            'Motivo Cancel.': t.motivo || '',
+            'Ressalva Tipo': t.ressalva_tipo || '',
+            'Ressalva Detalhe': t.ressalva_quais || ''
+        }));
+    }
+
+    function executeExport(data, fileName, format, title) {
+        if(data.length === 0) { alert("Sem dados."); return; }
+        if(format === 'excel') {
+            const ws = XLSX.utils.json_to_sheet(data);
+            const wb = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(wb, ws, "Dados");
+            XLSX.writeFile(wb, `${fileName}.xlsx`);
+        } else if(format === 'pdf') {
+            const { jsPDF } = window.jspdf;
+            const doc = new jsPDF('l', 'mm', 'a4'); // Paisagem para caber mais colunas
+            doc.setFontSize(16);
+            doc.text(title, 14, 15);
+            doc.autoTable({ 
+                head: [Object.keys(data[0])], 
+                body: data.map(Object.values), 
+                startY: 25,
+                styles: { fontSize: 7, cellPadding: 2 }, // Fonte menor para caber tudo
+                headStyles: { fillColor: [44, 62, 80] }
+            });
+            doc.save(`${fileName}.pdf`);
+        }
+    }
+</script>
+</body>
+</html>
