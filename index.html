@@ -36,6 +36,7 @@
             --vermelho-claro: #ffcccb;
             --verde: #90ee90;
             --laranja: #ffcc99;
+            --cinza-pausa: #f1c40f;
             --primary: #2c3e50;
             --rma-color: #8e44ad;
         }
@@ -88,15 +89,18 @@
         .status-cancelado { border-left-color: var(--vermelho-claro); background-color: #fffafa; }
         .status-concluido { border-left-color: var(--verde); background-color: #f5fff5; }
         .status-atraso { border-left-color: var(--laranja); background-color: #fffdf5; }
+        .status-pausado { border-left-color: var(--cinza-pausa); background-color: #fef9e7; }
         
         .status-badge { padding: 4px 8px; border-radius: 4px; font-weight: bold; font-size: 0.85rem; text-transform: uppercase; display: inline-block; }
         .badge-andamento { background: var(--azul-claro); }
         .badge-concluido { background: var(--verde); }
         .badge-cancelado { background: var(--vermelho-claro); }
         .badge-atraso { background: var(--laranja); }
+        .badge-pausado { background: var(--cinza-pausa); }
 
         .days-counter { font-weight: bold; color: #2c3e50; font-size: 0.9rem; margin-top: 5px; display: block; }
-        .instr-box { background: #f9f9f9; border: 1px dashed #ccc; padding: 10px; margin: 10px 0; border-radius: 5px; font-size: 0.9rem; color: #444; }
+        .instr-box, .obs-box { background: #f9f9f9; border: 1px dashed #ccc; padding: 10px; margin: 10px 0; border-radius: 5px; font-size: 0.9rem; color: #444; }
+        .obs-box { border-color: #3498db; background: #ecf0f1; }
 
         .btn-group { margin: 15px 0; display: flex; gap: 5px; flex-wrap: wrap; justify-content: center; } 
         .btn-rma { background: var(--rma-color) !important; }
@@ -179,6 +183,7 @@
         <div class="filter-bar">
             <button class="filter-btn active" id="f-tudo" onclick="setFilter('Tudo')">Visualizar Geral <span id="c-tudo">0</span></button>
             <button class="filter-btn" id="f-andamento" onclick="setFilter('Andamento')">Em Andamento <span id="c-andamento">0</span></button>
+            <button class="filter-btn" id="f-pausado" onclick="setFilter('Pausado')">Pausadas <span id="c-pausado">0</span></button>
             <button class="filter-btn" id="f-atrasado" onclick="setFilter('Atrasado')">Atrasadas <span id="c-atrasado">0</span></button>
             <button class="filter-btn" id="f-concluido" onclick="setFilter('Concluido')">Concluídas <span id="c-concluido">0</span></button>
             <button class="filter-btn" id="f-cancelado" onclick="setFilter('Cancelado')">Canceladas <span id="c-cancelado">0</span></button>
@@ -239,6 +244,7 @@
         <label>Situação:</label>
         <select id="t-situacao" onchange="toggleCancelReason()">
             <option value="Andamento">Andamento</option>
+            <option value="Pausado">Pausado</option>
             <option value="Concluido">Concluido</option>
             <option value="Cancelado">Cancelado</option>
             <option value="Em atraso">Em atraso</option>
@@ -254,6 +260,9 @@
             <option value="Com ressalvas">Com ressalvas</option>
         </select>
         <input type="text" id="t-ressalva-quais" placeholder="Quais ressalvas?">
+
+        <label>Observações Gerais:</label>
+        <textarea id="t-observacoes" rows="3" placeholder="Informações adicionais importantes..."></textarea>
 
         <input type="hidden" id="edit-id">
         <div class="btn-group">
@@ -386,19 +395,22 @@
         const deptTasks = db.tasks.filter(t => t.dept === currentDept);
         document.getElementById('c-tudo').innerText = deptTasks.length;
         document.getElementById('c-andamento').innerText = deptTasks.filter(t => t.situacao === 'Andamento').length;
+        document.getElementById('c-pausado').innerText = deptTasks.filter(t => t.situacao === 'Pausado').length;
         document.getElementById('c-concluido').innerText = deptTasks.filter(t => t.situacao === 'Concluido').length;
         document.getElementById('c-cancelado').innerText = deptTasks.filter(t => t.situacao === 'Cancelado').length;
         document.getElementById('c-atrasado').innerText = deptTasks.filter(t => {
             const diff = calculateDaysDiff(t.prazo);
-            return t.situacao !== 'Concluido' && t.situacao !== 'Cancelado' && diff !== null && diff < 0;
+            return t.situacao !== 'Concluido' && t.situacao !== 'Cancelado' && t.situacao !== 'Pausado' && diff !== null && diff < 0;
         }).length;
+        
         let filtered = deptTasks;
         if (currentFilter === 'Andamento') filtered = deptTasks.filter(t => t.situacao === 'Andamento');
+        else if (currentFilter === 'Pausado') filtered = deptTasks.filter(t => t.situacao === 'Pausado');
         else if (currentFilter === 'Concluido') filtered = deptTasks.filter(t => t.situacao === 'Concluido');
         else if (currentFilter === 'Cancelado') filtered = deptTasks.filter(t => t.situacao === 'Cancelado');
         else if (currentFilter === 'Atrasado') filtered = deptTasks.filter(t => {
             const diff = calculateDaysDiff(t.prazo);
-            return t.situacao !== 'Concluido' && t.situacao !== 'Cancelado' && diff !== null && diff < 0;
+            return t.situacao !== 'Concluido' && t.situacao !== 'Cancelado' && t.situacao !== 'Pausado' && diff !== null && diff < 0;
         });
         filtered.forEach(t => list.innerHTML += generateTaskHTML(t, t.id, false));
     }
@@ -406,13 +418,18 @@
     function generateTaskHTML(t, id, isPrint = false) {
         let situacaoExibida = t.situacao;
         const diff = calculateDaysDiff(t.prazo);
-        const estaAtrasado = (t.situacao !== 'Concluido' && t.situacao !== 'Cancelado' && diff !== null && diff < 0);
+        const estaAtrasado = (t.situacao !== 'Concluido' && t.situacao !== 'Cancelado' && t.situacao !== 'Pausado' && diff !== null && diff < 0);
         if(estaAtrasado) situacaoExibida = "Em atraso";
+        
         let statusClass = "status-" + (estaAtrasado ? "atraso" : situacaoExibida.toLowerCase().replace(" ", "-"));
         let badgeClass = "badge-" + (estaAtrasado ? "atraso" : situacaoExibida.toLowerCase().replace(" ", "-"));
+        
         let instrHtml = t.instrucoes ? `<div class="instr-box"><strong>Instruções:</strong> ${t.instrucoes}</div>` : "";
-        let counterHtml = (t.situacao !== 'Concluido' && t.situacao !== 'Cancelado' && diff !== null) ? 
+        let obsHtml = t.observacoes ? `<div class="obs-box"><strong>Observações:</strong> ${t.observacoes}</div>` : "";
+        
+        let counterHtml = (t.situacao !== 'Concluido' && t.situacao !== 'Cancelado' && t.situacao !== 'Pausado' && diff !== null) ? 
             `<span class="days-counter">${diff >= 0 ? 'Faltam '+diff+' dias' : 'Atrasado '+Math.abs(diff)+' dias'}</span>` : "";
+        
         const actions = isPrint ? '' : `
             <div class="btn-group" style="justify-content: flex-start;">
                 <button class="btn-edit" onclick="editTask('${id}')">Editar</button>
@@ -423,12 +440,14 @@
                 ${t.rma === 'Sim' ? '<span class="tag-rma">RMA</span>' : ''}
                 <input type="checkbox" ${t.situacao === 'Concluido' ? 'checked' : ''} onclick="toggleConcluir('${id}', this)"> Concluído
             </div>`;
+
         return `<div class="task-card ${statusClass}">
                     ${checkbox}
                     <strong>Resp:</strong> ${t.quem} | <strong>SG:</strong> ${t.gestao}<br>
                     <strong>Tarefa:</strong> ${t.oque}<br>
                     <strong>Local:</strong> ${t.onde || '---'}
                     ${instrHtml}
+                    ${obsHtml}
                     <strong>Início:</strong> ${formatarDataBR(t.quando)} | <strong>Prazo:</strong> ${formatarDataBR(t.prazo)}<br>
                     ${counterHtml}
                     <strong>Status:</strong> <span class="status-badge ${badgeClass}">${situacaoExibida}</span> ${t.motivo ? ' - Motivo: '+t.motivo : ''}<br>
@@ -471,6 +490,7 @@
             document.getElementById('t-cancel-motivo').value = t.motivo || "";
             document.getElementById('t-ressalva-tipo').value = t.ressalva_tipo;
             document.getElementById('t-ressalva-quais').value = t.ressalva_quais;
+            document.getElementById('t-observacoes').value = t.observacoes || "";
             calculateModalDays();
             toggleCancelReason();
             openTaskModal(true);
@@ -492,7 +512,8 @@
             situacao: document.getElementById('t-situacao').value,
             motivo: document.getElementById('t-cancel-motivo').value,
             ressalva_tipo: document.getElementById('t-ressalva-tipo').value,
-            ressalva_quais: document.getElementById('t-ressalva-quais').value
+            ressalva_quais: document.getElementById('t-ressalva-quais').value,
+            observacoes: document.getElementById('t-observacoes').value
         };
         const { addDoc, updateDoc, doc, collection } = window.fsMethods;
         if(id === "") await addDoc(collection(window.dbFirestore, "tarefas"), taskObj);
@@ -567,7 +588,6 @@
     function closeModal(id) { document.getElementById(id).style.display = 'none'; }
     function toggleCancelReason() { document.getElementById('div-cancelado').style.display = (document.getElementById('t-situacao').value === 'Cancelado') ? 'block' : 'none'; }
 
-    // --- EXPORTAÇÃO (ATUALIZADA COM TODOS OS CAMPOS) ---
     function preExport(type, param, format) {
         exportPending = { type, param, format };
         document.getElementById('exportFilterModal').style.display = 'block';
@@ -580,7 +600,9 @@
         let filteredTasks = (type === 'filtered') ? db.tasks.filter(t => t.gestao === param) :
                             (type === 'rma') ? db.tasks.filter(t => t.rma === 'Sim') :
                             (type === 'dept') ? db.tasks.filter(t => t.dept === currentDept) : [...db.tasks];
+        
         if (!includeClosed) filteredTasks = filteredTasks.filter(t => t.situacao !== 'Concluido' && t.situacao !== 'Cancelado');
+        
         if (format === 'print') {
             const list = document.getElementById('task-list');
             const originalContent = list.innerHTML;
@@ -594,7 +616,6 @@
         }
     }
 
-    // Mapeamento de todos os campos para os documentos
     function getFormatedData(taskList) {
         return taskList.map(t => ({
             'Setor': t.dept || '',
@@ -604,12 +625,12 @@
             'RMA': t.rma || 'Não',
             'Local': t.onde || '',
             'Instruções': t.instrucoes || '',
-            'Data Inicial': formatarDataBR(t.quando),
-            'Prazo Final': formatarDataBR(t.prazo),
+            'Início': formatarDataBR(t.quando),
+            'Prazo': formatarDataBR(t.prazo),
             'Situação': t.situacao || '',
             'Motivo Cancel.': t.motivo || '',
-            'Ressalva Tipo': t.ressalva_tipo || '',
-            'Ressalva Detalhe': t.ressalva_quais || ''
+            'Ressalva': t.ressalva_tipo || '',
+            'Observações': t.observacoes || ''
         }));
     }
 
@@ -622,14 +643,14 @@
             XLSX.writeFile(wb, `${fileName}.xlsx`);
         } else if(format === 'pdf') {
             const { jsPDF } = window.jspdf;
-            const doc = new jsPDF('l', 'mm', 'a4'); // Paisagem para caber mais colunas
+            const doc = new jsPDF('l', 'mm', 'a4'); 
             doc.setFontSize(16);
             doc.text(title, 14, 15);
             doc.autoTable({ 
                 head: [Object.keys(data[0])], 
                 body: data.map(Object.values), 
                 startY: 25,
-                styles: { fontSize: 7, cellPadding: 2 }, // Fonte menor para caber tudo
+                styles: { fontSize: 6, cellPadding: 1.5 }, 
                 headStyles: { fillColor: [44, 62, 80] }
             });
             doc.save(`${fileName}.pdf`);
