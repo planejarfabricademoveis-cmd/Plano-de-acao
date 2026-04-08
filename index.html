@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Sistema Plano de Ação - v3.0 Firebase</title>
+    <title>Sistema Plano de Ação - v3.5 Cloud</title>
     
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
@@ -36,7 +36,7 @@
             --vermelho-claro: #ffcccb;
             --verde: #90ee90;
             --laranja: #ffcc99;
-            --cinza-pausa: #f1c40f;
+            --cinza-pausa: #d3d3d3;
             --primary: #2c3e50;
             --rma-color: #8e44ad;
         }
@@ -83,13 +83,16 @@
         .filter-btn.active { background: var(--primary); color: white; border-color: var(--primary); }
         .filter-btn span { background: rgba(0,0,0,0.1); padding: 2px 6px; border-radius: 10px; margin-left: 5px; font-size: 0.75rem; }
 
+        .search-container { margin-bottom: 20px; }
+        .search-input { border: 2px solid var(--primary); font-size: 1rem; border-radius: 20px; padding: 10px 20px; }
+
         .task-card { background: white; padding: 20px; border-radius: 8px; margin-bottom: 20px; border-left: 10px solid #ccc; position: relative; box-shadow: 0 2px 5px rgba(0,0,0,0.05); transition: 0.3s; }
         
         .status-andamento { border-left-color: var(--azul-claro); background-color: #f0f8ff; }
         .status-cancelado { border-left-color: var(--vermelho-claro); background-color: #fffafa; }
         .status-concluido { border-left-color: var(--verde); background-color: #f5fff5; }
         .status-atraso { border-left-color: var(--laranja); background-color: #fffdf5; }
-        .status-pausado { border-left-color: var(--cinza-pausa); background-color: #fef9e7; }
+        .status-pausado { border-left-color: var(--cinza-pausa); background-color: #f9f9f9; }
         
         .status-badge { padding: 4px 8px; border-radius: 4px; font-weight: bold; font-size: 0.85rem; text-transform: uppercase; display: inline-block; }
         .badge-andamento { background: var(--azul-claro); }
@@ -99,8 +102,8 @@
         .badge-pausado { background: var(--cinza-pausa); }
 
         .days-counter { font-weight: bold; color: #2c3e50; font-size: 0.9rem; margin-top: 5px; display: block; }
-        .instr-box, .obs-box { background: #f9f9f9; border: 1px dashed #ccc; padding: 10px; margin: 10px 0; border-radius: 5px; font-size: 0.9rem; color: #444; }
-        .obs-box { border-color: #3498db; background: #ecf0f1; }
+        .instr-box { background: #f9f9f9; border: 1px dashed #ccc; padding: 10px; margin: 10px 0; border-radius: 5px; font-size: 0.9rem; color: #444; }
+        .obs-box { background: #fffde7; border: 1px solid #e1d000; padding: 10px; margin: 5px 0; border-radius: 5px; font-size: 0.9rem; font-style: italic; }
 
         .btn-group { margin: 15px 0; display: flex; gap: 5px; flex-wrap: wrap; justify-content: center; } 
         .btn-rma { background: var(--rma-color) !important; }
@@ -123,9 +126,18 @@
             padding: 10px; border-bottom: 1px solid #eee;
         }
 
+        #global-search-results {
+            background: #fff; border: 2px solid var(--primary); border-radius: 10px;
+            margin: 20px auto; max-width: 900px; text-align: left; display: none;
+            max-height: 400px; overflow-y: auto; padding: 15px;
+        }
+        .result-item { padding: 10px; border-bottom: 1px solid #eee; cursor: pointer; }
+        .result-item:hover { background: #f0f0f0; }
+        .result-tag-dept { background: #2c3e50; color: white; padding: 2px 6px; border-radius: 4px; font-size: 0.7rem; margin-right: 10px; }
+
         @media print {
             body { background: white; padding: 0; }
-            .btn-group, .header-actions, .export-section, .filter-bar, button, .modal, .tag-rma, input[type="checkbox"] { display: none !important; }
+            .btn-group, .header-actions, .export-section, .filter-bar, button, .modal, .tag-rma, input[type="checkbox"], .search-container, #global-search-results { display: none !important; }
             .container { max-width: 100%; }
             .task-card { break-inside: avoid; border: 1px solid #eee; border-left: 10px solid #ccc !important; margin-bottom: 15px; box-shadow: none; print-color-adjust: exact; }
         }
@@ -147,6 +159,13 @@
         <div class="header-actions">
             <h2>Gestão Centralizada</h2>
             <div id="clock-display" class="current-time"></div>
+            
+            <div class="search-container" style="max-width: 600px; margin: 10px auto;">
+                <input type="text" id="master-global-search" class="search-input" placeholder="🔍 Busca Inteligente (Nome, Tarefa, Local em todos os setores...)" onkeyup="masterSearch()">
+            </div>
+            
+            <div id="global-search-results"></div>
+
             <button onclick="openConfigDepts()">Gerenciar Departamentos</button>
             <button onclick="logout()" style="background:#666">Sair</button>
         </div>
@@ -154,13 +173,15 @@
         <div class="export-section">
             <strong>Relatórios e Extratos Globais:</strong><br>
             <div class="btn-group">
+                <button class="btn-rma" onclick="preExport('rma_extrato', null, 'pdf')" style="border: 2px solid gold;">📄 EXTRATO RMA MINISTERIAL</button>
                 <button class="btn-export" onclick="preExport('filtered', 'Sim', 'excel')">Excel: Simples Gestão</button>
                 <button class="btn-export" onclick="preExport('filtered', 'Não', 'excel')">Excel: Não Simples</button>
                 <button class="btn-export" onclick="preExport('filtered', 'Sim', 'pdf')">PDF: Simples Gestão</button>
                 <button class="btn-export" onclick="preExport('filtered', 'Não', 'pdf')">PDF: Não Simples</button>
-                <button class="btn-rma" onclick="preExport('rma', null, 'pdf')">PDF Extrato RMA</button>
+                <button class="btn-rma" onclick="preExport('rma', null, 'pdf')">PDF Extrato RMA Geral</button>
                 <button class="btn-rma" onclick="preExport('rma', null, 'excel')">Excel RMA</button>
-                <button class="btn-export" onclick="preExport('full', null, 'excel')">Relatório Geral (Todos)</button>
+                <button class="btn-export" onclick="preExport('full', null, 'excel')">Excel Geral (Todos)</button>
+                <button class="btn-export" onclick="preExport('full', null, 'pdf')">PDF Geral (Todos)</button>
             </div>
         </div>
 
@@ -178,6 +199,10 @@
             <button class="btn-export" onclick="preExport('dept', null, 'excel')">Exportar Excel</button>
             <button class="btn-export" onclick="preExport('dept', null, 'pdf')">Exportar PDF</button>
             <button class="btn-export" onclick="preExport('dept', null, 'print')">Imprimir Setor</button>
+        </div>
+
+        <div class="search-container">
+            <input type="text" id="global-search" class="search-input" placeholder="🔍 Buscar neste setor..." onkeyup="renderTasks()">
         </div>
 
         <div class="filter-bar">
@@ -198,7 +223,7 @@
         <h3>Configuração do Relatório</h3>
         <p>Deseja incluir as tarefas <strong>Concluídas</strong> ou <strong>Canceladas</strong> no documento?</p>
         <select id="export-include-closed">
-            <option value="Não">Não (Apenas Pendentes/Em Atraso)</option>
+            <option value="Não">Não (Apenas Pendentes/Pausadas/Em Atraso)</option>
             <option value="Sim">Sim (Relatório Completo)</option>
         </select>
         <div class="btn-group" style="justify-content: center; margin-top: 20px;">
@@ -233,7 +258,10 @@
 
         <label>Para onde?</label> <input type="text" id="t-onde" placeholder="Local ou destino">
         <label>Instruções:</label>
-        <textarea id="t-instrucoes" rows="3"></textarea>
+        <textarea id="t-instrucoes" rows="2"></textarea>
+
+        <label>Observações:</label>
+        <textarea id="t-obs" rows="2" placeholder="Especificações adicionais..."></textarea>
         
         <div style="display: flex; gap: 10px;">
             <div style="flex: 1;"><label>Data Inicial</label> <input type="date" id="t-quando"></div>
@@ -261,9 +289,6 @@
         </select>
         <input type="text" id="t-ressalva-quais" placeholder="Quais ressalvas?">
 
-        <label>Observações Gerais:</label>
-        <textarea id="t-observacoes" rows="3" placeholder="Informações adicionais importantes..."></textarea>
-
         <input type="hidden" id="edit-id">
         <div class="btn-group">
             <button onclick="saveTask()" style="background: #27ae60; padding: 15px 30px;">SALVAR NO CLOUD</button>
@@ -286,10 +311,32 @@
 
 <script>
     const SENHA_MESTRA = "DEUSBOM";
+    const SENHA_RESTRITA = "DEUSSEJALOUVADO";
+    
     let db = { depts: [], tasks: [] };
     let currentDept = "";
     let exportPending = null;
     let currentFilter = "Tudo";
+
+    // --- SISTEMA DE SENHAS ---
+    function authAction(callback, failCallback = null) {
+        const p = prompt("Confirme a senha mestra:");
+        if(p === SENHA_MESTRA) callback(); 
+        else {
+            if (p !== null) alert("Senha incorreta!");
+            if (failCallback) failCallback();
+        }
+    }
+
+    // Nova função para senha restrita (Gerenciamento e Edição)
+    function authRestricted(callback, failCallback = null) {
+        const p = prompt("Acesso Restrito! Digite a senha de autorização:");
+        if(p === SENHA_RESTRITA) callback(); 
+        else {
+            if (p !== null) alert("Senha de autorização incorreta!");
+            if (failCallback) failCallback();
+        }
+    }
 
     async function syncFromFirebase() {
         if (!window.dbFirestore) return;
@@ -339,15 +386,6 @@
         } else { alert("Senha incorreta!"); }
     }
 
-    function authAction(callback, failCallback = null) {
-        const p = prompt("Confirme a senha mestra:");
-        if(p === SENHA_MESTRA) callback(); 
-        else {
-            if (p !== null) alert("Senha incorreta!");
-            if (failCallback) failCallback();
-        }
-    }
-
     function logout() { location.reload(); }
 
     function renderDepts() {
@@ -371,6 +409,7 @@
             document.getElementById('main-content').style.display = 'none';
             document.getElementById('dept-detail').style.display = 'block';
             document.getElementById('current-dept-title').innerText = name;
+            document.getElementById('global-search').value = "";
             renderTasks();
         });
     }
@@ -391,8 +430,11 @@
 
     function renderTasks() {
         const list = document.getElementById('task-list');
+        const searchTerm = document.getElementById('global-search').value.toLowerCase();
         list.innerHTML = "";
+        
         const deptTasks = db.tasks.filter(t => t.dept === currentDept);
+        
         document.getElementById('c-tudo').innerText = deptTasks.length;
         document.getElementById('c-andamento').innerText = deptTasks.filter(t => t.situacao === 'Andamento').length;
         document.getElementById('c-pausado').innerText = deptTasks.filter(t => t.situacao === 'Pausado').length;
@@ -402,7 +444,7 @@
             const diff = calculateDaysDiff(t.prazo);
             return t.situacao !== 'Concluido' && t.situacao !== 'Cancelado' && t.situacao !== 'Pausado' && diff !== null && diff < 0;
         }).length;
-        
+
         let filtered = deptTasks;
         if (currentFilter === 'Andamento') filtered = deptTasks.filter(t => t.situacao === 'Andamento');
         else if (currentFilter === 'Pausado') filtered = deptTasks.filter(t => t.situacao === 'Pausado');
@@ -412,20 +454,65 @@
             const diff = calculateDaysDiff(t.prazo);
             return t.situacao !== 'Concluido' && t.situacao !== 'Cancelado' && t.situacao !== 'Pausado' && diff !== null && diff < 0;
         });
+
+        if(searchTerm) {
+            filtered = filtered.filter(t => 
+                (t.quem || "").toLowerCase().includes(searchTerm) || 
+                (t.oque || "").toLowerCase().includes(searchTerm) || 
+                (t.onde || "").toLowerCase().includes(searchTerm) ||
+                (t.obs || "").toLowerCase().includes(searchTerm)
+            );
+        }
+
         filtered.forEach(t => list.innerHTML += generateTaskHTML(t, t.id, false));
+    }
+
+    function masterSearch() {
+        const term = document.getElementById('master-global-search').value.toLowerCase();
+        const resultsBox = document.getElementById('global-search-results');
+        
+        if (term.length < 2) {
+            resultsBox.style.display = 'none';
+            return;
+        }
+
+        const filtered = db.tasks.filter(t => 
+            (t.quem || "").toLowerCase().includes(term) || 
+            (t.oque || "").toLowerCase().includes(term) || 
+            (t.onde || "").toLowerCase().includes(term) ||
+            (t.dept || "").toLowerCase().includes(term)
+        );
+
+        if (filtered.length > 0) {
+            resultsBox.style.display = 'block';
+            resultsBox.innerHTML = `<h4 style="margin-top:0">Resultados Encontrados (${filtered.length}):</h4>`;
+            filtered.forEach(t => {
+                resultsBox.innerHTML += `
+                    <div class="result-item" onclick="enterDept('${t.dept}')">
+                        <span class="result-tag-dept">${t.dept}</span>
+                        <strong>${t.quem}</strong>: ${t.oque} 
+                        <span style="color:#666; font-size:0.8rem">(${t.onde || 'Sem local'})</span>
+                    </div>
+                `;
+            });
+        } else {
+            resultsBox.style.display = 'block';
+            resultsBox.innerHTML = '<p style="color:#888; margin:0">Nenhum resultado para este termo.</p>';
+        }
     }
 
     function generateTaskHTML(t, id, isPrint = false) {
         let situacaoExibida = t.situacao;
         const diff = calculateDaysDiff(t.prazo);
         const estaAtrasado = (t.situacao !== 'Concluido' && t.situacao !== 'Cancelado' && t.situacao !== 'Pausado' && diff !== null && diff < 0);
+        
         if(estaAtrasado) situacaoExibida = "Em atraso";
         
         let statusClass = "status-" + (estaAtrasado ? "atraso" : situacaoExibida.toLowerCase().replace(" ", "-"));
         let badgeClass = "badge-" + (estaAtrasado ? "atraso" : situacaoExibida.toLowerCase().replace(" ", "-"));
         
         let instrHtml = t.instrucoes ? `<div class="instr-box"><strong>Instruções:</strong> ${t.instrucoes}</div>` : "";
-        let obsHtml = t.observacoes ? `<div class="obs-box"><strong>Observações:</strong> ${t.observacoes}</div>` : "";
+        let obsHtml = t.obs ? `<div class="obs-box"><strong>Observação:</strong> ${t.obs}</div>` : "";
         
         let counterHtml = (t.situacao !== 'Concluido' && t.situacao !== 'Cancelado' && t.situacao !== 'Pausado' && diff !== null) ? 
             `<span class="days-counter">${diff >= 0 ? 'Faltam '+diff+' dias' : 'Atrasado '+Math.abs(diff)+' dias'}</span>` : "";
@@ -435,6 +522,7 @@
                 <button class="btn-edit" onclick="editTask('${id}')">Editar</button>
                 <button class="btn-delete" onclick="deleteTask('${id}')">Excluir</button>
             </div>`;
+        
         const checkbox = isPrint ? '' : `
             <div style="float:right">
                 ${t.rma === 'Sim' ? '<span class="tag-rma">RMA</span>' : ''}
@@ -455,9 +543,10 @@
                 </div>`;
     }
 
+    // --- OPERAÇÕES COM SENHA RESTRITA ---
     async function toggleConcluir(id, checkbox) {
         const prev = !checkbox.checked;
-        authAction(async () => {
+        authRestricted(async () => {
             const { updateDoc, doc } = window.fsMethods;
             await updateDoc(doc(window.dbFirestore, "tarefas", id), { situacao: checkbox.checked ? 'Concluido' : 'Andamento' });
             syncFromFirebase();
@@ -465,7 +554,7 @@
     }
 
     async function deleteTask(id) {
-        authAction(async () => {
+        authRestricted(async () => {
             if(confirm("Excluir permanentemente?")){
                 const { deleteDoc, doc } = window.fsMethods;
                 await deleteDoc(doc(window.dbFirestore, "tarefas", id));
@@ -475,7 +564,7 @@
     }
 
     function editTask(id) {
-        authAction(() => {
+        authRestricted(() => {
             const t = db.tasks.find(x => x.id === id);
             document.getElementById('edit-id').value = id;
             document.getElementById('t-quem').value = t.quem;
@@ -484,19 +573,27 @@
             document.getElementById('t-rma').value = t.rma || "Não";
             document.getElementById('t-onde').value = t.onde || "";
             document.getElementById('t-instrucoes').value = t.instrucoes || "";
+            document.getElementById('t-obs').value = t.obs || "";
             document.getElementById('t-quando').value = t.quando;
             document.getElementById('t-prazo').value = t.prazo;
             document.getElementById('t-situacao').value = t.situacao;
             document.getElementById('t-cancel-motivo').value = t.motivo || "";
             document.getElementById('t-ressalva-tipo').value = t.ressalva_tipo;
             document.getElementById('t-ressalva-quais').value = t.ressalva_quais;
-            document.getElementById('t-observacoes').value = t.observacoes || "";
             calculateModalDays();
             toggleCancelReason();
             openTaskModal(true);
         });
     }
 
+    function openConfigDepts() {
+        authRestricted(() => {
+            refreshDeptMgmtList();
+            document.getElementById('deptModal').style.display = 'block';
+        });
+    }
+
+    // --- RESTANTE DAS FUNÇÕES ---
     async function saveTask() {
         const id = document.getElementById('edit-id').value;
         const taskObj = {
@@ -507,13 +604,13 @@
             rma: document.getElementById('t-rma').value,
             onde: document.getElementById('t-onde').value,
             instrucoes: document.getElementById('t-instrucoes').value,
+            obs: document.getElementById('t-obs').value,
             quando: document.getElementById('t-quando').value,
             prazo: document.getElementById('t-prazo').value,
             situacao: document.getElementById('t-situacao').value,
             motivo: document.getElementById('t-cancel-motivo').value,
             ressalva_tipo: document.getElementById('t-ressalva-tipo').value,
-            ressalva_quais: document.getElementById('t-ressalva-quais').value,
-            observacoes: document.getElementById('t-observacoes').value
+            ressalva_quais: document.getElementById('t-ressalva-quais').value
         };
         const { addDoc, updateDoc, doc, collection } = window.fsMethods;
         if(id === "") await addDoc(collection(window.dbFirestore, "tarefas"), taskObj);
@@ -566,13 +663,6 @@
         `).join("");
     }
 
-    function openConfigDepts() {
-        authAction(() => {
-            refreshDeptMgmtList();
-            document.getElementById('deptModal').style.display = 'block';
-        });
-    }
-
     function openTaskModal(isEdit = false) {
         if(!isEdit) {
             document.getElementById('edit-id').value = "";
@@ -597,9 +687,32 @@
         const includeClosed = document.getElementById('export-include-closed').value === 'Sim';
         const { type, param, format } = exportPending;
         closeModal('exportFilterModal');
-        let filteredTasks = (type === 'filtered') ? db.tasks.filter(t => t.gestao === param) :
-                            (type === 'rma') ? db.tasks.filter(t => t.rma === 'Sim') :
-                            (type === 'dept') ? db.tasks.filter(t => t.dept === currentDept) : [...db.tasks];
+        
+        let filteredTasks = [];
+        
+        // --- NOVO FILTRO: EXTRATO RMA MINISTERIAL ---
+        if (type === 'rma_extrato') {
+            filteredTasks = db.tasks.filter(t => 
+                t.rma === 'Sim' && 
+                t.gestao === 'Não' && 
+                (t.situacao === 'Andamento' || t.situacao === 'Em atraso')
+            );
+            
+            const dataExtrato = filteredTasks.map(t => ({
+                'Tarefa': t.oque || '',
+                'RMA': t.rma || 'Sim',
+                'Local': t.onde || '',
+                'Instrução': t.instrucoes || ''
+            }));
+            
+            executeExport(dataExtrato, "Extrato_RMA_Ministerial", "pdf", "EXTRATO RMA - APROVAÇÃO MINISTERIAL");
+            return;
+        }
+
+        // Filtros Padrões
+        filteredTasks = (type === 'filtered') ? db.tasks.filter(t => t.gestao === param) :
+                         (type === 'rma') ? db.tasks.filter(t => t.rma === 'Sim') :
+                         (type === 'dept') ? db.tasks.filter(t => t.dept === currentDept) : [...db.tasks];
         
         if (!includeClosed) filteredTasks = filteredTasks.filter(t => t.situacao !== 'Concluido' && t.situacao !== 'Cancelado');
         
@@ -612,7 +725,7 @@
             list.innerHTML = originalContent;
             renderTasks(); 
         } else {
-            executeExport(getFormatedData(filteredTasks), "Relatorio_Plano_de_Acao", format, "Relatório Completo Plano de Ação");
+            executeExport(getFormatedData(filteredTasks), "Relatorio_Plano_de_Acao", format, "Relatório Plano de Ação");
         }
     }
 
@@ -625,33 +738,54 @@
             'RMA': t.rma || 'Não',
             'Local': t.onde || '',
             'Instruções': t.instrucoes || '',
-            'Início': formatarDataBR(t.quando),
-            'Prazo': formatarDataBR(t.prazo),
+            'Observação': t.obs || '',
+            'Data Inicial': formatarDataBR(t.quando),
+            'Prazo Final': formatarDataBR(t.prazo),
             'Situação': t.situacao || '',
             'Motivo Cancel.': t.motivo || '',
-            'Ressalva': t.ressalva_tipo || '',
-            'Observações': t.observacoes || ''
+            'Ressalva Tipo': t.ressalva_tipo || '',
+            'Ressalva Detalhe': t.ressalva_quais || ''
         }));
     }
 
     function executeExport(data, fileName, format, title) {
-        if(data.length === 0) { alert("Sem dados."); return; }
+        if(data.length === 0) { alert("Não há dados para os critérios selecionados."); return; }
+        
         if(format === 'excel') {
-            const ws = XLSX.utils.json_to_sheet(data);
-            const wb = XLSX.utils.book_new();
-            XLSX.utils.book_append_sheet(wb, ws, "Dados");
-            XLSX.writeFile(wb, `${fileName}.xlsx`);
+            try {
+                const ws = XLSX.utils.json_to_sheet(data);
+                const wb = XLSX.utils.book_new();
+                XLSX.utils.book_append_sheet(wb, ws, "Plano de Ação");
+                
+                // Forçar download
+                const wbout = XLSX.write(wb, {bookType:'xlsx', type:'binary'});
+                function s2ab(s) {
+                    const buf = new ArrayBuffer(s.length);
+                    const view = new Uint8Array(buf);
+                    for (let i=0; i<s.length; i++) view[i] = s.charCodeAt(i) & 0xFF;
+                    return buf;
+                }
+                saveAs(new Blob([s2ab(wbout)],{type:"application/octet-stream"}), `${fileName}.xlsx`);
+            } catch (e) {
+                console.error("Erro Excel:", e);
+                alert("Erro ao gerar Excel. Verifique o console.");
+            }
         } else if(format === 'pdf') {
             const { jsPDF } = window.jspdf;
-            const doc = new jsPDF('l', 'mm', 'a4'); 
-            doc.setFontSize(16);
+            const doc = new jsPDF('l', 'mm', 'a4');
+            doc.setFontSize(14);
             doc.text(title, 14, 15);
+            
+            const headers = Object.keys(data[0]);
+            const rows = data.map(item => Object.values(item));
+
             doc.autoTable({ 
-                head: [Object.keys(data[0])], 
-                body: data.map(Object.values), 
+                head: [headers], 
+                body: rows, 
                 startY: 25,
-                styles: { fontSize: 6, cellPadding: 1.5 }, 
-                headStyles: { fillColor: [44, 62, 80] }
+                styles: { fontSize: 7, cellPadding: 2 }, 
+                headStyles: { fillColor: [44, 62, 80], textColor: [255, 255, 255] },
+                alternateRowStyles: { fillColor: [245, 245, 245] }
             });
             doc.save(`${fileName}.pdf`);
         }
